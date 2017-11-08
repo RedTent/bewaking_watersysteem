@@ -12,7 +12,7 @@ HHSKthema()
 meetpuntendf <- import_meetpunten_latlong("data/meetpunten.csv") 
 basis_meetpunten <- meetpuntendf %>% filter(`basis-jaarlijks` == 1) %>% select(mp, `landgebruik 2015`)
 data <- import_data("data/fys_chem.zip") %>% semi_join(y= basis_meetpunten, by = "mp") %>% left_join(y = select(meetpuntendf, mp, `landgebruik 2015`), by = "mp")
-data <- data %>% group_by(mp, parnr, par, jaar, maand) %>% summarise(maand_gem_waarde = mean(waarde)) %>% ungroup() %>% filter(parnr < 18)
+data <- data %>% group_by(mp, parnr, par, jaar, maand, `landgebruik 2015`) %>% summarise(maand_gem_waarde = mean(waarde)) %>% ungroup() %>% filter(parnr < 18)
 aantal_vgl_jaren <- 10
 
 ### onderbrengen in server
@@ -43,7 +43,7 @@ ui <- fluidPage(
       sidebarPanel(
          sliderInput("jaar_keuze", "Kies jaar", min = min(data$jaar)+10, max = max(data$jaar), value = max(data$jaar), step = 1, sep = "" ),
          sliderInput("maand_keuze", "Kies maand", min = 1, max = 12, value = 1, step = 1, sep = "" ),
-         radioButtons("meetpuntgroep", "Kies selectie (werkt nog niet)", choiceNames = c("Alle basismeetpunten", "Boezems", "Boezems en uitwisselpunten", "Meren en plassen"), choiceValues = c(1,2,3,4))
+         radioButtons("meetpuntgroep", "Kies meetpuntenselectie", choiceNames = c("Alle basismeetpunten", "Boezems", "Boezems en uitwisselpunten", "Meren en plassen"), choiceValues = c(1,2,3,4))
          
       ),
       
@@ -60,15 +60,23 @@ ui <- fluidPage(
 
 # SERVER ------------------------
 server <- function(input, output) {
-   
+
+    data_group_sel <- reactive({
+      if(input$meetpuntgroep == 1){data <- data}
+      if(input$meetpuntgroep == 2){data <- filter(data, `landgebruik 2015` == "Boezem") }
+      if(input$meetpuntgroep == 3){data <- filter(data, `landgebruik 2015` %in% c("Boezem", "Afvoer/gemaal")) }
+      if(input$meetpuntgroep == 4){data <- filter(data, `landgebruik 2015` == "Plassen") }
+      data
+    })
+     
     ranked_data <- reactive({
-      data <- filter(data, maand == input$maand_keuze, jaar > (input$jaar_keuze - aantal_vgl_jaren), jaar <= input$jaar_keuze )
+      data <- data_group_sel() %>% filter( maand == input$maand_keuze, jaar > (input$jaar_keuze - aantal_vgl_jaren), jaar <= input$jaar_keuze )
       ranked_data <-  data %>% 
                       group_by(mp, parnr, maand) %>% 
                       mutate(rank = rank(maand_gem_waarde), aantal = n(), norm_rank = (aantal_vgl_jaren-1)*(rank-1)/(aantal-1)+1, perc_rank = (rank-1)/(aantal-1)*100 ) %>% 
                       ungroup() %>% 
                       filter(jaar == input$jaar_keuze)
-      #print(ranked_data)
+      
       #ranked_data
       
     })  
@@ -76,10 +84,9 @@ server <- function(input, output) {
    output$ranked_data <- renderDataTable({
      summary <- ranked_data() %>% group_by(parnr, par) %>% 
        summarise(gem_rank = round(mean(norm_rank, na.rm = TRUE), digits=1), 
-                 tot_met = sum(aantal), 
-                 aantal_meetjaar = n(), 
-                 gem_perc_rank = round(mean(perc_rank, na.rm = TRUE)*100, digits=0)) %>% 
-       filter(tot_met > 100, aantal_meetjaar > 15)
+                 tot_metingen = sum(aantal), 
+                 aantal_in_meetjaar = n(), 
+                 gem_perc_rank = round(mean(perc_rank, na.rm = TRUE), digits=0)) 
      
      datatable(summary)
      }) # end output ranked_data

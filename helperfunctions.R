@@ -31,7 +31,7 @@ import_meetpunten_latlong <- function(meetpuntencsv="meetpunten.csv", X = "X", Y
   coordinates(longlat) = ~long+lat
   proj4string(longlat) <- CRS("+init=EPSG:28992")
   longlat <- spTransform(longlat,"+init=EPSG:4326")
-  meetpuntendf <- left_join(meetpuntendf, select(as_data_frame(longlat), mp, long, lat), by = "mp")
+  meetpuntendf <- left_join(meetpuntendf, select(as.data.frame(longlat), mp, long, lat), by = "mp")
 }
 
 import_parameters <- function(parametercsv='parameters.csv'){
