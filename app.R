@@ -4,7 +4,10 @@ source("helperfunctions.R")
 library(shiny)
 library(dplyr)
 library(DT)
+library(ggplot2)
+library(gridExtra)
 
+HHSKthema()
 
 meetpuntendf <- import_meetpunten_latlong("data/meetpunten.csv") 
 basis_meetpunten <- meetpuntendf %>% filter(`basis-jaarlijks` == 1) %>% select(mp, `landgebruik 2015`)
@@ -39,12 +42,17 @@ ui <- fluidPage(
    sidebarLayout(
       sidebarPanel(
          sliderInput("jaar_keuze", "Kies jaar", min = min(data$jaar)+10, max = max(data$jaar), value = max(data$jaar), step = 1, sep = "" ),
-         sliderInput("maand_keuze", "Kies maand", min = 1, max = 12, value = 1, step = 1, sep = "" )
+         sliderInput("maand_keuze", "Kies maand", min = 1, max = 12, value = 1, step = 1, sep = "" ),
+         radioButtons("meetpuntgroep", "Kies selectie (werkt nog niet)", choiceNames = c("Alle basismeetpunten", "Boezems", "Boezems en uitwisselpunten", "Meren en plassen"), choiceValues = c(1,2,3,4))
+         
       ),
       
       # Show a plot of the generated distribution
       mainPanel(
+       
+        plotOutput("hists", height = 800),
         dataTableOutput("ranked_data")
+        
       )
    )
 )
@@ -57,19 +65,37 @@ server <- function(input, output) {
       data <- filter(data, maand == input$maand_keuze, jaar > (input$jaar_keuze - aantal_vgl_jaren), jaar <= input$jaar_keuze )
       ranked_data <-  data %>% 
                       group_by(mp, parnr, maand) %>% 
-                      mutate(rank = rank(maand_gem_waarde), aantal = n(), norm_rank = (aantal_vgl_jaren-1)*(rank-1)/(aantal-1)+1, rel_rank = (rank-1)/(aantal-1)) %>% 
+                      mutate(rank = rank(maand_gem_waarde), aantal = n(), norm_rank = (aantal_vgl_jaren-1)*(rank-1)/(aantal-1)+1, perc_rank = (rank-1)/(aantal-1)*100 ) %>% 
                       ungroup() %>% 
                       filter(jaar == input$jaar_keuze)
+      #print(ranked_data)
+      #ranked_data
       
     })  
   
    output$ranked_data <- renderDataTable({
-     summary <- ranked_data() %>% group_by(parnr, par) %>% summarise(gem_rank = round(mean(norm_rank, na.rm = TRUE), digits=1), perc_rank = round(mean(rel_rank, na.rm = TRUE)*100, digits=0))
+     summary <- ranked_data() %>% group_by(parnr, par) %>% 
+       summarise(gem_rank = round(mean(norm_rank, na.rm = TRUE), digits=1), 
+                 tot_met = sum(aantal), 
+                 aantal_meetjaar = n(), 
+                 gem_perc_rank = round(mean(perc_rank, na.rm = TRUE)*100, digits=0)) %>% 
+       filter(tot_met > 100, aantal_meetjaar > 15)
+     
      datatable(summary)
      }) # end output ranked_data
+   
+   output$hists <- renderPlot({
+     
+     plots <- ranked_data() %>% mutate (par_combi = if_else(parnr<10, paste0("0",parnr," ", par), paste(parnr,par)) ) %>% 
+       ggplot(aes(x = perc_rank)) + geom_histogram(fill = hhskblauw, bins = 10) + hhskthema + facet_wrap(~par_combi, ncol=5)
+     plots
+   })
+   
    
 }#end server
 
 # Run the application ------
 shinyApp(ui = ui, server = server)
+
+
 
